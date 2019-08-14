@@ -1,6 +1,8 @@
 import os
 from mrcnn.config import Config
 from mrcnn import utils
+import numpy as np
+import mrcnn.model as modellib
 
 ROOT_DIR = os.path.abspath("../../")
 
@@ -30,9 +32,9 @@ class KaggleConfig(Config):
     IMAGE_MAX_DIM = 512
 
 
-def eval_mAP(model, dataset, config=InferenceConfig(), sample_size=50):
+def eval_mAP(model, dataset, config, sample_size=50):
 
-    image_ids = np.random.choice(dataset.image_ids, 500)
+    image_ids = np.random.choice(dataset.image_ids, sample_size)
 
     #each input is a tuple of form : image, image_meta, gt_class_id, gt_bbox, gt_mask
     inputs = [modellib.load_image_gt(dataset, config, iid, use_mini_mask=False) for iid in image_ids]

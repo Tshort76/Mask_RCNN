@@ -43,15 +43,17 @@ def load_classes(conn=None):
     return class_descriptions
 
 
-def load_annotations_by_image():
+def load_annotations_by_image(classes=None):
 
     conn = _get_sql_conn()
-    class_descriptions = load_classes(conn)
+    
+    if classes is None:
+        classes  = load_classes(conn)
 
     #This now holds the annotation information.
     bboxes = pd.read_sql("SELECT ImageID, XMax, XMin, YMin, YMax, LabelName FROM [Sandbox].[kaggle].[Combined_Set_Detection_BBox]", conn)
 
-    annotations = pd.merge(bboxes,class_descriptions, on='LabelName',how='inner')
+    annotations = pd.merge(bboxes,classes, on='LabelName',how='inner')
 
     # This now holds the list of images
     image_paths = pd.read_sql("SELECT ImageID, RelativePath, Height, Width, Mode from [kaggle].[Image_Path]", conn)

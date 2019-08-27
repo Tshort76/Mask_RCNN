@@ -143,3 +143,26 @@ def load_dataset(anns_by_image, data_dir, classes, is_train=True):
 
     return ds
 
+
+def partition_classes():
+
+    conn = _get_sql_conn()
+
+    all_classes = load_classes(conn)
+    bboxes = pd.read_sql("SELECT ImageID, XMax, XMin, YMin, YMax, LabelName FROM [Sandbox].[kaggle].[Combined_Set_Detection_BBox]", conn)
+
+    tmp = bboxes['LabelName'].value_counts()
+    tmp = tmp.apply(np.log10)
+    tmp = tmp.apply(int)
+
+    class_sets = []
+
+    for i in range(1,7):
+        idxs = tmp[tmp == i].index.values
+        tmp_set = all_classes[all_classes['LabelName'].isin(idxs)]  #reset_index()
+        tmp_set = tmp_set.reset_index()
+        tmp_set['LabelID'] = tmp_set.index + 1
+        class_sets.append(tmp_set)
+        
+    return class_sets
+

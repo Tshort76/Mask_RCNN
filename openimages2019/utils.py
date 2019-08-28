@@ -47,6 +47,9 @@ def eval_mAP(model, dataset, config, sample_size=50):
 
         curr_inputs = inputs[i:i+n]
         
+        if (len(curr_inputs)%n) != 0:
+            break
+        
         results = model.detect([inp[0] for inp in curr_inputs], verbose=0)
         
         for j in range(len(results)):

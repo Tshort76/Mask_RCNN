@@ -9,22 +9,12 @@ import skimage.io
 import sys
 
 # Import Mask RCNN
-sys.path.append(ut.ROOT_DIR)  # To find local version of the library
+# sys.path.append(ut.ROOT_DIR)  # To find local version of the library
 
 from mrcnn import utils
 import mrcnn.model as modellib
 from mrcnn import visualize
 from mrcnn.model import log
-
-#Make GPUs visible
-
-
-def env_init(num_gpus=1):
-    gpu_str = ','.join(map(str,range(num_gpus)))
-    #set visible gpu devices
-    os.system('export HIP_VISIBLE_DEVICES=' + gpu_str)
-    #set which gpus should have their memory made available
-    os.environ["CUDA_VISIBLE_DEVICES"]=gpu_str
 
 
 def _get_sql_conn():
@@ -40,12 +30,15 @@ def _get_sql_conn():
     return conn
 
 
-def load_classes(conn=None):
+def load_classes(conn=None, path_to_csv=None):
 
     if conn is None:
         conn = _get_sql_conn()
 
-    class_descriptions = pd.read_sql("SELECT LabelName, LabelDescription from [kaggle].[Class_Description]", conn)
+    if path_to_csv:
+        pd.read_csv(path_to_csv)
+    else:
+        class_descriptions = pd.read_sql("SELECT LabelName, LabelDescription from [kaggle].[Class_Description]", conn)
 
     #add 1 since Background class is automatically added at index 0
     class_descriptions['LabelID'] = class_descriptions.index + 1
@@ -61,7 +54,7 @@ def load_annotations_by_image(classes=None, use_masks=False):
         classes  = load_classes(conn)
 
     if use_masks:
-        bboxes = pd.read_sql("SELECT MaskPath, ImageID, LabelName, BoxID, BoxXMin, BoxXMax, BoxYMin, BoxYMax, PredictedIoU, Clicks, SourceDataset from [kaggle].[Combined_Annotations_Object_Segmentation]", conn)
+        bboxes = pd.read_sql("SELECT MaskPath, ImageID, LabelName, BoxID, BoxXMin, BoxXMax, BoxYMin, BoxYMax, PredictedIoU, SourceDataset from [kaggle].[Combined_Annotations_Object_Segmentation]", conn)
     else:
         bboxes = pd.read_sql("SELECT ImageID, XMax, XMin, YMin, YMax, LabelName FROM [Sandbox].[kaggle].[Combined_Set_Detection_BBox]", conn)
 
@@ -77,9 +70,9 @@ def load_annotations_by_image(classes=None, use_masks=False):
 
 
 #Subclass the mrcnn DataSet class
-class KaggleImageDataset(utils.Dataset):
+class OpenImageDataset(utils.Dataset):
 
-    def set_mask_path(self, path):
+    def set_mask_path(self, path=None):
         self.mask_path = path
 
     def add_classes(self, class_descriptions):
@@ -87,7 +80,7 @@ class KaggleImageDataset(utils.Dataset):
         for _,row in class_descriptions.iterrows():
             self.add_class("openImages", row['LabelID'], row['LabelDescription'])
 
-    def load_kaggle_images(self, dataset_dir, grouped_by_images):
+    def load_image_files(self, dataset_dir, grouped_by_images):
         """Load a subset of the image dataset.
         dataset_dir: The root directory of the image dataset.
         classes: Dataframe : If provided, only loads images that have the given classes.
@@ -113,8 +106,7 @@ class KaggleImageDataset(utils.Dataset):
         class_ids: a 1D array of class IDs of the instance masks.
         """
         
-        # TODO Dont know if this hasattr cal actually works ...
-        if self.hasattr('mask_path'):
+        if self.mask_path:
             return self._load_file_masks(image_id)
 
         return self._build_bbox_mask(image_id)
@@ -167,16 +159,21 @@ class KaggleImageDataset(utils.Dataset):
     
 
 
-def load_dataset(anns_by_image, data_dir, classes, is_train=True):
+def load_dataset(anns_by_image, data_dir, classes, is_train=True, mask_path=None):
 
     set_str = 'train' if is_train else 'validation'
 
-    train_paths = anns_by_image[anns_by_image['RelativePath'].str.contains(set_str,regex=False)]
-    train_grouped = train_paths.groupby('ImageID')
+    if mask_path:
+        ann_paths = anns_by_image[anns_by_image['SourceDataset'] == set_str]
+    else:
+        ann_paths = anns_by_image[anns_by_image['RelativePath'].str.contains(set_str,regex=False)]
 
-    ds = KaggleImageDataset()
+    anns_grouped = ann_paths.groupby('ImageID')
+
+    ds = OpenImageDataset()
     ds.add_classes(classes)
-    ds.load_kaggle_images(data_dir, train_grouped)
+    ds.set_mask_path(mask_path)
+    ds.load_image_files(data_dir, anns_grouped)
     ds.prepare()
 
     return ds

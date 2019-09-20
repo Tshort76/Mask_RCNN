@@ -1,35 +1,6 @@
-import os
-from mrcnn.config import Config
 from mrcnn import utils
 import numpy as np
 import mrcnn.model as modellib
-
-ROOT_DIR = os.path.abspath("../../")
-
-# Directory to save logs and trained model
-MODEL_DIR = os.path.join(ROOT_DIR, "logs")
-
-DATA_DIR = os.path.join(ROOT_DIR, "../data")
-
-# Local path to trained weights file
-COCO_MODEL_PATH = os.path.join(ROOT_DIR, "mask_rcnn_coco.h5")
-
-#Subclass the mrcnn Config class
-class KaggleConfig(Config):
-    
-    NAME = "kaggle"
-
-    GPU_COUNT = 2
-    IMAGES_PER_GPU = 2 # we should be able to make this bigger, atleast 4 for 1024x1024
-
-    # Number of classes (including background)
-    # NUM_CLASSES = 1 + len(load_classes())  # + 1 for background
-    NUM_CLASSES = 501 # + 1 for background
-
-    # Use small images for faster training. Set the limits of the small side
-    # the large side, and that determines the image shape.
-    IMAGE_MIN_DIM = 512
-    IMAGE_MAX_DIM = 512
 
 
 def eval_mAP(model, dataset, config, sample_size=50):

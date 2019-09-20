@@ -36,7 +36,7 @@ def load_classes(conn=None, path_to_csv=None):
         conn = _get_sql_conn()
 
     if path_to_csv:
-        pd.read_csv(path_to_csv)
+        class_descriptions = pd.read_csv(path_to_csv)
     else:
         class_descriptions = pd.read_sql("SELECT LabelName, LabelDescription from [kaggle].[Class_Description]", conn)
 
@@ -54,7 +54,7 @@ def load_annotations_by_image(classes=None, use_masks=False):
         classes  = load_classes(conn)
 
     if use_masks:
-        bboxes = pd.read_sql("SELECT MaskPath, ImageID, LabelName, BoxID, BoxXMin, BoxXMax, BoxYMin, BoxYMax, PredictedIoU, SourceDataset from [kaggle].[Combined_Annotations_Object_Segmentation]", conn)
+        bboxes = pd.read_sql("SELECT MaskPath, ImageID, LabelName, SourceDataset from [kaggle].[Combined_Annotations_Object_Segmentation]", conn)
     else:
         bboxes = pd.read_sql("SELECT ImageID, XMax, XMin, YMin, YMax, LabelName FROM [Sandbox].[kaggle].[Combined_Set_Detection_BBox]", conn)
 
@@ -179,12 +179,16 @@ def load_dataset(anns_by_image, data_dir, classes, is_train=True, mask_path=None
     return ds
 
 
-def partition_classes():
+def partition_classes(path_to_class_csv=None):
 
     conn = _get_sql_conn()
 
-    all_classes = load_classes(conn)
-    bboxes = pd.read_sql("SELECT ImageID, XMax, XMin, YMin, YMax, LabelName FROM [Sandbox].[kaggle].[Combined_Set_Detection_BBox]", conn)
+    all_classes = load_classes(conn,path_to_class_csv)
+    
+    if path_to_class_csv:
+        bboxes = pd.read_sql("SELECT MaskPath, ImageID, LabelName, SourceDataset from [kaggle].[Combined_Annotations_Object_Segmentation]", conn)
+    else:
+        bboxes = pd.read_sql("SELECT ImageID, XMax, XMin, YMin, YMax, LabelName FROM [Sandbox].[kaggle].[Combined_Set_Detection_BBox]", conn)
 
     tmp = bboxes['LabelName'].value_counts()
     tmp = tmp.apply(np.log10)

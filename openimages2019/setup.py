@@ -4,6 +4,8 @@ import os
 import pyodbc
 import numpy as np
 from skimage.draw import rectangle
+from skimage import transform
+import skimage.io
 import sys
 
 # Import Mask RCNN
@@ -15,7 +17,15 @@ from mrcnn import visualize
 from mrcnn.model import log
 
 #Make GPUs visible
-os.system('export HIP_VISIBLE_DEVICES=0,1,2,3')
+
+
+def env_init(num_gpus=1):
+    gpu_str = ','.join(map(str,range(num_gpus)))
+    #set visible gpu devices
+    os.system('export HIP_VISIBLE_DEVICES=' + gpu_str)
+    #set which gpus should have their memory made available
+    os.environ["CUDA_VISIBLE_DEVICES"]=gpu_str
+
 
 def _get_sql_conn():
 
@@ -43,15 +53,17 @@ def load_classes(conn=None):
     return class_descriptions
 
 
-def load_annotations_by_image(classes=None):
+def load_annotations_by_image(classes=None, use_masks=False):
 
     conn = _get_sql_conn()
     
     if classes is None:
         classes  = load_classes(conn)
 
-    #This now holds the annotation information.
-    bboxes = pd.read_sql("SELECT ImageID, XMax, XMin, YMin, YMax, LabelName FROM [Sandbox].[kaggle].[Combined_Set_Detection_BBox]", conn)
+    if use_masks:
+        bboxes = pd.read_sql("SELECT MaskPath, ImageID, LabelName, BoxID, BoxXMin, BoxXMax, BoxYMin, BoxYMax, PredictedIoU, Clicks, SourceDataset from [kaggle].[Combined_Annotations_Object_Segmentation]", conn)
+    else:
+        bboxes = pd.read_sql("SELECT ImageID, XMax, XMin, YMin, YMax, LabelName FROM [Sandbox].[kaggle].[Combined_Set_Detection_BBox]", conn)
 
     annotations = pd.merge(bboxes,classes, on='LabelName',how='inner')
 
@@ -65,7 +77,10 @@ def load_annotations_by_image(classes=None):
 
 
 #Subclass the mrcnn DataSet class
-class FullKaggleImageDataset(utils.Dataset):
+class KaggleImageDataset(utils.Dataset):
+
+    def set_mask_path(self, path):
+        self.mask_path = path
 
     def add_classes(self, class_descriptions):
         # Add classes, BG is automatically added at index 0
@@ -98,6 +113,14 @@ class FullKaggleImageDataset(utils.Dataset):
         class_ids: a 1D array of class IDs of the instance masks.
         """
         
+        # TODO Dont know if this hasattr cal actually works ...
+        if self.hasattr('mask_path'):
+            return self._load_file_masks(image_id)
+
+        return self._build_bbox_mask(image_id)
+        
+
+    def _build_bbox_mask(self, image_id):
         # Create rectangular bounding box since we are doing object detection, not segmentation
         # desired dimension is [height, width, instance_count]
         img = self.image_info[image_id]
@@ -123,6 +146,22 @@ class FullKaggleImageDataset(utils.Dataset):
         # Return mask, and array of class IDs of each instance.
         return mask.astype(np.bool), np.array(img['annotations']['LabelID'].values, dtype=np.int32)
 
+    def _load_file_masks(self, image_id):
+        img = self.image_info[image_id]
+        
+        masks = []
+        
+        for i,(_,p) in enumerate(img["annotations"].iterrows()):   
+            mpath = os.path.join(self.mask_path, p['MaskPath'])
+            raw_mask = skimage.io.imread(mpath)
+             # mask is often not the same size as the image, resize the mask so that it is
+            masks.append(transform.resize(raw_mask,(img['height'],img['width'])))
+        
+        mask = np.stack(masks, axis=-1)
+        
+        return mask,np.array(img['annotations']['LabelID'].values, dtype=np.int32)
+
+
     def image_reference(self, image_id):
         return self.image_info[image_id]['path']
     
@@ -135,8 +174,7 @@ def load_dataset(anns_by_image, data_dir, classes, is_train=True):
     train_paths = anns_by_image[anns_by_image['RelativePath'].str.contains(set_str,regex=False)]
     train_grouped = train_paths.groupby('ImageID')
 
-    # Training dataset
-    ds = FullKaggleImageDataset()
+    ds = KaggleImageDataset()
     ds.add_classes(classes)
     ds.load_kaggle_images(data_dir, train_grouped)
     ds.prepare()

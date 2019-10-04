@@ -8,9 +8,6 @@ from skimage import transform
 import skimage.io
 import sys
 
-# Import Mask RCNN
-# sys.path.append(ut.ROOT_DIR)  # To find local version of the library
-
 from mrcnn import utils
 import mrcnn.model as modellib
 from mrcnn import visualize
@@ -30,14 +27,13 @@ def _get_sql_conn():
     return conn
 
 
-def load_classes(conn=None, path_to_csv=None):
+def load_classes(path_to_csv=None):
 
-    if conn is None:
-        conn = _get_sql_conn()
+    conn = _get_sql_conn()
 
     if path_to_csv:
         class_descriptions = pd.read_csv(path_to_csv)
-    else:
+    else: #assume that we are using object detection classes
         class_descriptions = pd.read_sql("SELECT LabelName, LabelDescription from [kaggle].[Class_Description]", conn)
 
     #add 1 since Background class is automatically added at index 0
@@ -56,7 +52,7 @@ def load_annotations_by_image(classes=None, use_masks=False):
     if use_masks:
         bboxes = pd.read_sql("SELECT MaskPath, ImageID, LabelName, SourceDataset from [kaggle].[Combined_Annotations_Object_Segmentation]", conn)
     else:
-        bboxes = pd.read_sql("SELECT ImageID, XMax, XMin, YMin, YMax, LabelName FROM [Sandbox].[kaggle].[Combined_Set_Detection_BBox]", conn)
+        bboxes = pd.read_sql("SELECT ImageID, XMax, XMin, YMin, YMax, LabelName FROM [kaggle].[Combined_Set_Detection_BBox]", conn)
 
     annotations = pd.merge(bboxes,classes, on='LabelName',how='inner')
 
@@ -188,7 +184,7 @@ def partition_classes(path_to_class_csv=None):
     if path_to_class_csv:
         bboxes = pd.read_sql("SELECT MaskPath, ImageID, LabelName, SourceDataset from [kaggle].[Combined_Annotations_Object_Segmentation]", conn)
     else:
-        bboxes = pd.read_sql("SELECT ImageID, XMax, XMin, YMin, YMax, LabelName FROM [Sandbox].[kaggle].[Combined_Set_Detection_BBox]", conn)
+        bboxes = pd.read_sql("SELECT ImageID, XMax, XMin, YMin, YMax, LabelName FROM [kaggle].[Combined_Set_Detection_BBox]", conn)
 
     tmp = bboxes['LabelName'].value_counts()
     tmp = tmp.apply(np.log10)

@@ -15,16 +15,7 @@ from mrcnn.model import log
 
 
 def _get_sql_conn():
-
-    if 'dgs_sandbox_pwd' in os.environ:
-        conn = pyodbc.connect('DSN=BIdevDatabase;'
-                          'Database=Sandbox;'
-                          'UID=DGSuser;'
-                          'PWD=' + os.environ['dgs_sandbox_pwd'])
-    else:
-        conn = pyodbc.connect('Driver={SQL Server};Server=bidev;Database=sandbox;Trusted_Connection=yes')
-
-    return conn
+    return pyodbc.connect(os.environ['db_connection_string'])
 
 
 def load_classes(path_to_csv=None):

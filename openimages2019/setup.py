@@ -18,7 +18,15 @@ def _get_sql_conn():
     return pyodbc.connect(os.environ['db_connection_string'])
 
 
-def load_classes(path_to_csv=None):
+def load_classes(path_to_csv=None) -> pd.DataFrame:
+    """Loads class labels and their descriptions from the kaggle database (for object detection track only) or from a csv file
+    
+    Keyword Arguments:
+        path_to_csv {str} -- file path for the csv containing class labels and description (default: {None})
+    
+    Returns:
+        pandas.DataFrame -- Dataframe containing the class name, class description, and labelId (updated to account for implicit background class)
+    """
 
     conn = _get_sql_conn()
 
@@ -33,7 +41,17 @@ def load_classes(path_to_csv=None):
     return class_descriptions
 
 
-def load_annotations_by_image(classes=None, use_masks=False):
+def load_annotations_by_image(classes=None, use_masks=False) -> pd.DataFrame:
+    """Loads and returns ground truth annotations for a set of classes.
+
+    
+    Keyword Arguments:
+        classes {pd.DataFrame} -- The set of classes of interest.  Annotations are filtered to those involving one of the classes (default: {None})
+        use_masks {bool} -- Whether or not to use segmentation masks as the ground truth (default: {False})
+    
+    Returns:
+        pd.DataFrame -- A dataframe in which each row represents a single annotated object within an image
+    """
 
     conn = _get_sql_conn()
     
@@ -63,7 +81,7 @@ class OpenImageDataset(utils.Dataset):
         self.mask_path = path
 
     def add_classes(self, class_descriptions):
-        # Add classes, BG is automatically added at index 0
+        # Add classes, BG is automatically added at index 0 so LabelID has been modified to start at 1
         for _,row in class_descriptions.iterrows():
             self.add_class("openImages", row['LabelID'], row['LabelDescription'])
 
@@ -130,7 +148,7 @@ class OpenImageDataset(utils.Dataset):
         
         masks = []
         
-        for i,(_,p) in enumerate(img["annotations"].iterrows()):   
+        for _,p in img["annotations"].iterrows():   
             mpath = os.path.join(self.mask_path, p['MaskPath'])
             raw_mask = skimage.io.imread(mpath)
              # mask is often not the same size as the image, resize the mask so that it is
@@ -147,6 +165,20 @@ class OpenImageDataset(utils.Dataset):
 
 
 def load_dataset(anns_by_image, data_dir, classes, is_train=True, mask_path=None):
+    """Prepares and returns an OpenImageDataset for the OpenImages2019 image set
+    
+    Arguments:
+        anns_by_image {pd.DataFrame} -- A dataframe in which each row represents a single annotated object within an image
+        data_dir {str} -- The filepath to where the images are stored.  Object detection assumes a 'validation' and 'train' subdirectory at this location
+        classes {pd.DataFrame} -- The classes of interest for this dataset
+    
+    Keyword Arguments:
+        is_train {bool} -- Load the training set (as opposed to the validation set)? (default: {True})
+        mask_path {str} -- The filepath to where the segmentation masks are stored (for object segmentation) (default: {None})
+    
+    Returns:
+        mrcnn.utils.Dataset -- The mrcnn dataset expected for training the matterport mask_rcnn model
+    """
 
     set_str = 'train' if is_train else 'validation'
 
@@ -164,31 +196,3 @@ def load_dataset(anns_by_image, data_dir, classes, is_train=True, mask_path=None
     ds.prepare()
 
     return ds
-
-
-def partition_classes(path_to_class_csv=None):
-
-    conn = _get_sql_conn()
-
-    all_classes = load_classes(conn,path_to_class_csv)
-    
-    if path_to_class_csv:
-        bboxes = pd.read_sql("SELECT MaskPath, ImageID, LabelName, SourceDataset from [kaggle].[Combined_Annotations_Object_Segmentation]", conn)
-    else:
-        bboxes = pd.read_sql("SELECT ImageID, XMax, XMin, YMin, YMax, LabelName FROM [kaggle].[Combined_Set_Detection_BBox]", conn)
-
-    tmp = bboxes['LabelName'].value_counts()
-    tmp = tmp.apply(np.log10)
-    tmp = tmp.apply(int)
-
-    class_sets = []
-
-    for i in range(1,7):
-        idxs = tmp[tmp == i].index.values
-        tmp_set = all_classes[all_classes['LabelName'].isin(idxs)]  #reset_index()
-        tmp_set = tmp_set.reset_index()
-        tmp_set['LabelID'] = tmp_set.index + 1
-        class_sets.append(tmp_set)
-        
-    return class_sets
-
